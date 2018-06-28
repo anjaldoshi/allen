@@ -7,15 +7,16 @@
 #include <iostream>
 #include <cstring>
 #include <vector>
-
+#include <time.h>
 using namespace std;
 
 GLuint textures[3];
 
 int width, height, sw, sh;
-int iNext = 0, iPrev = 0, x = 0, fNext = 0, fPrev = 0, z = 0, zoom1 = 0, zoom2 = 0, fData1 = 0, fData2 = 0;
+int iNext = 0, iPrev = 0, x = 0, fNext = 0, fPrev = 0, z = 0, zoom1 = 0, zoom2 = 0, fData1 = 0, fData2 = 0, frame_count = 0;
 vector<unsigned char*> image;
 vector<vector<float>> features;
+int start_time =  0 , end_time;
 
 void genTexture(void){
     if(iNext == 1 && x < 99){
@@ -27,7 +28,7 @@ void genTexture(void){
     }
     iNext = iPrev = 0;
     glBindTexture(GL_TEXTURE_2D, textures[0]);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, image[x]);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_BGRA, GL_UNSIGNED_BYTE, image[x]);
     glActiveTexture(GL_TEXTURE0);
 }
 
@@ -174,8 +175,8 @@ void featureZoom(){
     if(zoom1==1){
         glBegin(GL_LINE_LOOP);
             glVertex2f(0.1, 0.1);
-            glVertex2f(0.1, sw/5);
-            glVertex2f(sw/5, sw/5);
+            glVertex2f(0.1, sw/5-0.1);
+            glVertex2f(sw/5, sw/5-0.1);
             glVertex2f(sw/5, 0.1);
         glEnd();
     }
@@ -215,8 +216,8 @@ void featureZoom(){
     if(zoom2==1){
         glBegin(GL_LINE_LOOP);
             glVertex2f(0.1, 0.1);
-            glVertex2f(0.1, sw/5);
-            glVertex2f(sw/5, sw/5);
+            glVertex2f(0.1, sw/5-0.1);
+            glVertex2f(sw/5, sw/5-0.1);
             glVertex2f(sw/5, 0.1);
         glEnd();
     }
@@ -232,8 +233,8 @@ void featureDetails(){
     glLoadIdentity();
     glBegin(GL_LINE_LOOP);
         glVertex2f(0.1, 0.1);
-        glVertex2f(0.1, sw/5);
-        glVertex2f(sw/5, sw/5);
+        glVertex2f(0.1, sw/5-0.1);
+        glVertex2f(sw/5, sw/5-0.1);
         glVertex2f(sw/5, 0.1);
     glEnd();
     glRasterPos2f(20, (sw/5)/5);
@@ -269,8 +270,8 @@ void featureDetails(){
     glLoadIdentity();
     glBegin(GL_LINE_LOOP);
         glVertex2f(0.1, 0.1);
-        glVertex2f(0.1, sw/5);
-        glVertex2f(sw/5, sw/5);
+        glVertex2f(0.1, sw/5-0.1);
+        glVertex2f(sw/5, sw/5-0.1);
         glVertex2f(sw/5, 0.1);
     glEnd();
     glRasterPos2f(20, (sw/5)/5);
@@ -304,6 +305,14 @@ void display(void) {
     drawOverlay();
     featureZoom();
     featureDetails();
+
+    frame_count++;
+    end_time = glutGet(GLUT_ELAPSED_TIME);
+    if(end_time - start_time > 1000){
+        cout<<"FPS: "<<frame_count * 1000/ (end_time - start_time)<<endl;
+        frame_count = 0;
+        start_time = end_time;
+    }
     glutSwapBuffers();
 }
 
@@ -317,11 +326,11 @@ void mouseAction(int button, int state, int x, int y){
             if(x < ((sw/2)+features[z][0]+20) && x > ((sw/2)+features[z][0]-20) && y < (features[z][1]+20) && y > (features[z][1]-20) ){
                 if(zoom1 == 1){
                     glBindTexture(GL_TEXTURE_2D, textures[1]);
-                    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, image[z]);
+                    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_BGRA, GL_UNSIGNED_BYTE, image[z]);
                     fData1 = z;
                 }else if(zoom2 == 1){
                     glBindTexture(GL_TEXTURE_2D, textures[2]);
-                    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, image[z]);
+                    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_BGRA, GL_UNSIGNED_BYTE, image[z]);
                     fData2 = z;
                 }
                 cout<<"Feature "<<z<<" Selected"<<endl;
