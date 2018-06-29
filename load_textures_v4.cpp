@@ -1,9 +1,12 @@
+#define GL_GLEXT_PROTOTYPES
+
 #include <GL/glut.h>
 #include <GL/glu.h>
 #include <GL/gl.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include "SOIL.h"
+#include "glext.h"
 #include <iostream>
 #include <cstring>
 #include <vector>
@@ -11,12 +14,15 @@
 using namespace std;
 
 GLuint textures[3];
+GLuint pbo;
 
 int width, height, sw, sh;
 int iNext = 0, iPrev = 0, x = 0, fNext = 0, fPrev = 0, z = 0, zoom1 = 0, zoom2 = 0, fData1 = 0, fData2 = 0, frame_count = 0;
 vector<unsigned char*> image;
 vector<vector<float>> features;
 int start_time =  0 , end_time;
+
+const int DATA_SIZE = 512 * 450 * 4;
 
 void genTexture(void){
     if(iNext == 1 && x < 99){
@@ -27,8 +33,15 @@ void genTexture(void){
         return;
     }
     iNext = iPrev = 0;
+    // glBindBufferARB(GL_PIXEL_UNPACK_BUFFER_ARB, pbo);
+    // glBufferDataARB(GL_PIXEL_UNPACK_BUFFER_ARB, DATA_SIZE, 0, GL_STREAM_DRAW_ARB);
+    // GLubyte* ptr = (GLubyte*)glMapBufferARB(GL_PIXEL_UNPACK_BUFFER_ARB, GL_WRITE_ONLY_ARB);
+    //     // update data directly on the mapped buffer
+    // memcpy(ptr, (GLubyte*)image[x], DATA_SIZE);
+    // glUnmapBufferARB(GL_PIXEL_UNPACK_BUFFER_ARB); // release pointer to mapping buffer
     glBindTexture(GL_TEXTURE_2D, textures[0]);
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_BGRA, GL_UNSIGNED_BYTE, image[x]);
+    // glBindBufferARB(GL_PIXEL_UNPACK_BUFFER_ARB, 0);
     glActiveTexture(GL_TEXTURE0);
 }
 
@@ -62,7 +75,8 @@ void init(void) {
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexImage2D(GL_TEXTURE_2D, 0, 4, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, image[0]);
+    glTexImage2D(GL_TEXTURE_2D, 0, 4, width, height, 0, GL_BGRA, GL_UNSIGNED_BYTE, image[0]);
+    //glBindTexture(GL_TEXTURE_2D, 0);
 
     glBindTexture(GL_TEXTURE_2D, textures[1]);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
@@ -72,7 +86,7 @@ void init(void) {
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     //float color[4] = {1.0, 1.0, 0.0, 1.0};
     //glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, color);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, image[0]);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_BGRA, GL_UNSIGNED_BYTE, image[0]);
 
     glBindTexture(GL_TEXTURE_2D, textures[2]);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
@@ -81,7 +95,11 @@ void init(void) {
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     //glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, color);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, image[0]);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_BGRA, GL_UNSIGNED_BYTE, image[0]);
+
+    // glGenBuffersARB(1, &pbo);
+    // glBindBufferARB(GL_PIXEL_UNPACK_BUFFER_ARB, pbo);
+    // glBufferDataARB(GL_PIXEL_UNPACK_BUFFER_ARB, DATA_SIZE, 0, GL_STREAM_DRAW_ARB);
 }
 
 void drawImages(){
