@@ -14,10 +14,10 @@
 using namespace std;
 
 GLuint textures[3];
-GLuint pbo;
+GLuint pbo[2];
 
 int width, height, sw, sh;
-int iNext = 0, iPrev = 0, x = 0, fNext = 0, fPrev = 0, z = 0, zoom1 = 0, zoom2 = 0, fData1 = 0, fData2 = 0, frame_count = 0;
+int iNext = 0, iPrev = 0, x = 0, z = 0, zoom1 = 0, zoom2 = 0, fData1 = 0, fData2 = 0, frame_count = 0, fwd = 0, rvs = 0;
 vector<unsigned char*> image;
 vector<vector<float>> features;
 int start_time =  0 , end_time;
@@ -25,26 +25,68 @@ int start_time =  0 , end_time;
 const int DATA_SIZE = 512 * 450 * 4;
 
 void genTexture(void){
-    if(iNext == 1 && x < 99){
-        x++;
-    }else if(iPrev == 1 && x > 0){
-        x--;
+    static int index = 0;
+    int nextIndex = 0;
+    if(iNext == 1){
+        if(x < 99){
+            x++;
+            z++;
+        }
+        else{
+            x = z = 0;
+        }
+    }else if(iPrev == 1){
+        if(x > 0){
+            x--;
+            z--;
+        }
+        else{
+            x = z = 99;
+        }
     }else{
         return;
     }
     iNext = iPrev = 0;
-    // glBindBufferARB(GL_PIXEL_UNPACK_BUFFER_ARB, pbo);
+
+    index = (index + 1) % 2;
+    nextIndex = (index + 1) % 2;
+
+    glBindTexture(GL_TEXTURE_2D, textures[0]);
+    //glBindBufferARB(GL_PIXEL_UNPACK_BUFFER_ARB, pbo[index]);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_BGRA, GL_UNSIGNED_BYTE, image[x]);
+    // glBindBufferARB(GL_PIXEL_UNPACK_BUFFER_ARB, pbo[nextIndex]);
     // glBufferDataARB(GL_PIXEL_UNPACK_BUFFER_ARB, DATA_SIZE, 0, GL_STREAM_DRAW_ARB);
     // GLubyte* ptr = (GLubyte*)glMapBufferARB(GL_PIXEL_UNPACK_BUFFER_ARB, GL_WRITE_ONLY_ARB);
     //     // update data directly on the mapped buffer
     // memcpy(ptr, (GLubyte*)image[x], DATA_SIZE);
     // glUnmapBufferARB(GL_PIXEL_UNPACK_BUFFER_ARB); // release pointer to mapping buffer
-    glBindTexture(GL_TEXTURE_2D, textures[0]);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_BGRA, GL_UNSIGNED_BYTE, image[x]);
     // glBindBufferARB(GL_PIXEL_UNPACK_BUFFER_ARB, 0);
     glActiveTexture(GL_TEXTURE0);
 }
 
+void playVideo(){
+    if(fwd == 1){
+        glBindTexture(GL_TEXTURE_2D, textures[0]);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_BGRA, GL_UNSIGNED_BYTE, image[x]);
+        if(x<99){
+            x++;
+            z++;
+        }else{
+            x = z = 0;
+        }
+    }
+
+    if(rvs == 1){
+        glBindTexture(GL_TEXTURE_2D, textures[0]);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_BGRA, GL_UNSIGNED_BYTE, image[x]);
+        if(x > 0){
+            x--;
+            z--;
+        }else{
+            x = z = 99;
+        }
+    }
+}
 
 void init(void) {
     glClearColor(0.0, 0.0, 0.0, 0.0);
@@ -54,7 +96,7 @@ void init(void) {
     glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glShadeModel(GL_FLAT);
     float fx = 50.0, fy = 50.0;
-    for(int i=0; i<100; i++){
+    for(int i = 0; i < 100; i++){
         char fileName[32];
         sprintf(fileName, "dataset/%d.png", i);
         image.push_back(SOIL_load_image(fileName, &width, &height, 0, SOIL_LOAD_AUTO));
@@ -97,9 +139,12 @@ void init(void) {
     //glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, color);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_BGRA, GL_UNSIGNED_BYTE, image[0]);
 
-    // glGenBuffersARB(1, &pbo);
-    // glBindBufferARB(GL_PIXEL_UNPACK_BUFFER_ARB, pbo);
-    // glBufferDataARB(GL_PIXEL_UNPACK_BUFFER_ARB, DATA_SIZE, 0, GL_STREAM_DRAW_ARB);
+    glGenBuffersARB(2, pbo);
+    glBindBufferARB(GL_PIXEL_UNPACK_BUFFER_ARB, pbo[0]);
+    glBufferDataARB(GL_PIXEL_UNPACK_BUFFER_ARB, DATA_SIZE, 0, GL_STREAM_DRAW_ARB);
+    glBindBufferARB(GL_PIXEL_UNPACK_BUFFER_ARB, pbo[1]);
+    glBufferDataARB(GL_PIXEL_UNPACK_BUFFER_ARB, DATA_SIZE, 0, GL_STREAM_DRAW_ARB);
+    glBindBufferARB(GL_PIXEL_UNPACK_BUFFER_ARB, 0);
 }
 
 void drawImages(){
@@ -142,12 +187,6 @@ void drawOverlay(){
     // move quad back a bit so it's above Z=0
     //glTranslatef(0,0,-0.5);
     //glScalef(50,50,50);
-    if(fNext == 1 && z < 99){
-        z++;
-    }else if(fPrev == 1 && z > 0){
-        z--;
-    }
-    fNext = fPrev = 0;
     glBegin(GL_LINE_LOOP);
         glVertex2f(features[z][0] - 20, features[z][1] - 20);
         glVertex2f(features[z][0] + 20, features[z][1] - 20);
@@ -323,15 +362,20 @@ void display(void) {
     drawOverlay();
     featureZoom();
     featureDetails();
-
-    frame_count++;
-    end_time = glutGet(GLUT_ELAPSED_TIME);
-    if(end_time - start_time > 1000){
-        cout<<"FPS: "<<frame_count * 1000/ (end_time - start_time)<<endl;
-        frame_count = 0;
-        start_time = end_time;
-    }
+    playVideo();
+    // frame_count++;
+    // end_time = glutGet(GLUT_ELAPSED_TIME);
+    // if(end_time - start_time > 100){
+    //     cout<<"FPS: "<<frame_count * 1000/ (end_time - start_time)<<endl;
+    //     frame_count = 0;
+    //     start_time = end_time;
+    // }
     glutSwapBuffers();
+}
+
+void Timer(int iUnused){
+    glutPostRedisplay();
+    glutTimerFunc(30, Timer, 0);
 }
 
 void myReshape(int w, int h) {
@@ -362,12 +406,10 @@ void mouseAction(int button, int state, int x, int y){
 void changeImage(unsigned char key, int x, int y){
     if(key == 'd'){
         iNext = 1; 
-        fNext = 1;
         genTexture();
     }
     else if(key == 'a'){
         iPrev = 1; 
-        fPrev = 1;
         genTexture();
     }
     else if(key == '1'){
@@ -376,6 +418,9 @@ void changeImage(unsigned char key, int x, int y){
     }else if(key == '2'){
         zoom2 = 1;
         zoom1 = 0;
+    }else if(key == ' '){
+        cout<<"Video Paused"<<endl;
+        fwd = rvs = 0;
     }
     else if(key == 27){
         image.clear();
@@ -385,9 +430,26 @@ void changeImage(unsigned char key, int x, int y){
     glutPostRedisplay();
 }
 
+void specialKeys(int key, int x, int y){
+    if(key == GLUT_KEY_RIGHT){
+        fwd = 1;
+        rvs = 0;
+    }else if(key == GLUT_KEY_LEFT){
+        fwd = 0;
+        rvs = 1;
+    }
+}
+
+
+void idle()
+{
+    glutPostRedisplay();
+}
+
+
 int main(int argc, char** argv) {
     glutInit(&argc, argv);
-    glutInitDisplayMode(GLUT_RGBA | GLUT_DEPTH);
+    glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGBA | GLUT_DEPTH);
     sw = glutGet(GLUT_SCREEN_WIDTH);
     sh = glutGet(GLUT_SCREEN_HEIGHT);
     sw = 1920;
@@ -396,9 +458,12 @@ int main(int argc, char** argv) {
     glutFullScreen();
     glutMouseFunc(mouseAction);
     glutKeyboardFunc(changeImage);
+    glutSpecialFunc(specialKeys);
     init();
     glutReshapeFunc(myReshape);
     glutDisplayFunc(display);
+    Timer(0);
+    //glutIdleFunc(idle);
     glutMainLoop();
     return 0;
 }
