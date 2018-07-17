@@ -1,22 +1,38 @@
 from OpenGL.GL import *
 from OpenGL.GLUT import *
 from OpenGL.GLU import *
-import sys, numpy
+import sys, numpy, json, h5py
 from PIL import Image
 
-totalImages = 99
-sw = sh = width = height = textures = currImage = iNext = iPrev = zoom1 = zoom2 = fData1 = fData2 = fwd = rvs = 0
+totalImages = 384
+sw = sh = width = height = textures = currImage = iNext = iPrev = zoom1 = zoom2 = fData1 = fData2 = fwd = rvs = MouseX = MouseY = hover = 0
+zoomFactor = 1.0
 image = []
 features = []
+traces = []
+masks = []
 
 def init():
-    global width, height, textures
+    global width, height, textures, traces, features, masks
     glClearColor(0.0,0.0,0.0,0.0)
 
-    for data in range(100):
-        im = Image.open('dataset/' + str(data) + '.png')
+    hf  = h5py.File('mask.h5', 'r')
+    off = hf.get('offset') 
+    x = off['x']
+    y = off['y']
+
+    masks = hf.get('mask')
+
+    with open('roi_taces.txt', 'r') as fh:
+        traces = json.load(fh)
+
+    for data in range(totalImages+1):
+        im = Image.open('dataset3/' + str(data) + '.png')
         image.append(im.tobytes("raw", "RGBA", 0, -1))
         features.append((numpy.random.randint(low=50, high=900), (numpy.random.randint(low=50, high=800))))
+        #features.append((x[data], y[data]))
+
+        
         #image = numpy.array(list(im.getdata()), numpy.int8)
    
     width = im.size[0]
@@ -36,35 +52,34 @@ def init():
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1)
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
-    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, image[0])
 
     glBindTexture(GL_TEXTURE_2D, textures[2])
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1)
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
-    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, image[0])
 
 
 def playVideo():
     global currImage
     if fwd == 1:
-        glBindTexture(GL_TEXTURE_2D, textures[0])
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_BGRA, GL_UNSIGNED_BYTE, image[currImage])
         if currImage < totalImages:
             currImage += 1
         else:
             currImage = 0
     if rvs == 1:
-        glBindTexture(GL_TEXTURE_2D, textures[0])
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_BGRA, GL_UNSIGNED_BYTE, image[currImage])
         if currImage > 0:
             currImage -= 1
         else:
             currImage = totalImages
+        
+    glBindTexture(GL_TEXTURE_2D, textures[0])
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_BGRA, GL_UNSIGNED_BYTE, image[currImage])
 
 
 def updateImage():
@@ -118,6 +133,8 @@ def drawImages():
     for ch in s:
         glutBitmapCharacter( GLUT_BITMAP_HELVETICA_18 , ord(ch))
    
+    
+
 
 def drawOverlay():
     glColor3ub(255,255,255)
@@ -134,6 +151,7 @@ def featureZoom():
     glViewport(int(sw/4), int(sh-sw/4.8), int(sw/5), int(sw/5))
     glMatrixMode(GL_PROJECTION)
     glLoadIdentity()
+    #gluOrtho2D((MouseX - sw/10)*zoomFactor, (MouseX + sw/10)*zoomFactor, (MouseY + sw/10)*zoomFactor, (MouseY - sw/10)*zoomFactor)
     gluOrtho2D(0, int(sw/5), int(sw/5), 0)
     glMatrixMode(GL_MODELVIEW)
     glLoadIdentity()
@@ -141,6 +159,8 @@ def featureZoom():
     glEnable(GL_TEXTURE_2D)
     glPushMatrix()
     glClear(GL_DEPTH_BUFFER_BIT)
+    glTranslatef(((-MouseX)*3+sw/10)*hover, ((-MouseY*(width/height))*3+sw/10)*hover, 0)
+    glScalef(zoomFactor, zoomFactor, 1.0)
     glBegin(GL_QUADS)
     glTexCoord2f(0.0, 0.0)
     glVertex3f(0.0, 0.0, 0.0)
@@ -274,12 +294,35 @@ def featureDetails():
         glutBitmapCharacter( GLUT_BITMAP_HELVETICA_18 , ord(ch))
 
 
+def plotTraces():
+    glColor3ub(255, 255, 255)
+    glViewport(0, 100, sw, 100)
+    glMatrixMode(GL_PROJECTION)
+    glLoadIdentity()
+    gluOrtho2D(0, sw, 100, 0)
+    glMatrixMode(GL_MODELVIEW)
+    glLoadIdentity()
+    glBegin(GL_LINES)
+    glVertex2f(0, 0)
+    glVertex2f(sw, 0)
+    glVertex2f(0, 100-0.1)
+    glVertex2f(sw, 100-0.1)
+    glEnd()
+    glBegin(GL_LINES)
+    for point in range(1,385):
+        glVertex2f((point-1)*5, (traces[point-1])/50-50)
+        glVertex2f(point*5, (traces[point])/50-50)
+    glEnd()
+
+
+
 def display():
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
     drawImages()
     drawOverlay()
     featureZoom()
     featureDetails()
+    plotTraces()
     playVideo()
     glutSwapBuffers()
 
@@ -304,8 +347,24 @@ def mouseAction(button, state, x, y):
     glutPostRedisplay()   
 
 
+def zoomLocation(x, y):
+    global zoomFactor, MouseX, MouseY
+    if x > int(sw/2) and x <= sw and y >= 0 and y < int((sw/2)*(height/width)) and hover == 1:
+        MouseX = x - sw/2
+        MouseY = y
+        glBindTexture(GL_TEXTURE_2D, textures[1])
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_BGRA, GL_UNSIGNED_BYTE, image[currImage])
+        zoomFactor = 7.5
+    else:
+        glBindTexture(GL_TEXTURE_2D, textures[1])
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_BGRA, GL_UNSIGNED_BYTE, image[fData1])
+        zoomFactor = 1.0
+        MouseX = MouseY = 0
+    glutPostRedisplay()       
+
+
 def changeImage(bkey, x, y):
-    global iNext, iPrev, zoom1, zoom2, fwd, rvs
+    global iNext, iPrev, zoom1, zoom2, fwd, rvs, hover
     key = bkey.decode("utf-8")
     if key == chr(27):
         sys.exit()
@@ -323,6 +382,11 @@ def changeImage(bkey, x, y):
         zoom2 = 1
     elif key == ' ':
         fwd = rvs = 0
+    elif key == 'z':
+        if hover == 0:
+            hover = 1
+        else:
+            hover = 0
     
     glutPostRedisplay()
 
@@ -347,6 +411,7 @@ if __name__ == '__main__':
     glutCreateWindow("2P Image Analysis")
     glutFullScreen()
     glutMouseFunc(mouseAction)
+    glutPassiveMotionFunc(zoomLocation)
     glutKeyboardFunc(changeImage)
     glutSpecialFunc(specialKeys)
     init()
