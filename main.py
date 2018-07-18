@@ -1,27 +1,33 @@
 from OpenGL.GL import *
 from OpenGL.GLUT import *
 from OpenGL.GLU import *
-import sys, numpy, json, h5py
+import sys, numpy, json, h5py, random
 from PIL import Image
 
 totalImages = 384
-sw = sh = width = height = textures = currImage = iNext = iPrev = zoom1 = zoom2 = fData1 = fData2 = fwd = rvs = MouseX = MouseY = hover = 0
+sw = sh = width = height = textures = maskTextures =  currImage = iNext = iPrev = zoom1 = zoom2 = fData1 = fData2 = fwd = rvs = MouseX = MouseY = hover = 0
 zoomFactor = 1.0
 image = []
-features = []
+featureOffset = []
+featureSize = []
 traces = []
 masks = []
+randRGB = []
 
 def init():
-    global width, height, textures, traces, features, masks
+    global width, height, textures, maskTextures, traces, featureOffset, featureSize, masks, randRGB
     glClearColor(0.0,0.0,0.0,0.0)
 
     hf  = h5py.File('mask.h5', 'r')
     off = hf.get('offset') 
-    x = off['x']
-    y = off['y']
-
+    offX = off['x']
+    offY = off['y']
+    fsize = hf.get('size')
+    fsizeX =  fsize['x']
+    fsizeY = fsize['y']
     masks = hf.get('mask')
+    masks = masks[:,:,:]
+    masks = masks.transpose(0, 2, 1)
 
     with open('roi_taces.txt', 'r') as fh:
         traces = json.load(fh)
@@ -29,14 +35,18 @@ def init():
     for data in range(totalImages+1):
         im = Image.open('dataset3/' + str(data) + '.png')
         image.append(im.tobytes("raw", "RGBA", 0, -1))
-        features.append((numpy.random.randint(low=50, high=900), (numpy.random.randint(low=50, high=800))))
-        #features.append((x[data], y[data]))
-
-        
-        #image = numpy.array(list(im.getdata()), numpy.int8)
-   
-    width = im.size[0]
-    height = im.size[1]
+        width = im.size[0]
+        height = im.size[1]
+        #featureOffset.append((numpy.random.randint(low=50, high=900), (numpy.random.randint(low=50, high=800))))
+    for data in range(len(masks)):    
+        featureOffset.append((offX[data]*(sw/(2*width)), offY[data]*(sw/(2*width))))
+        featureSize.append((fsizeX[data], fsizeY[data]))
+        r = random.uniform(0, 0.2)
+        g = random.uniform(0, 0.2)
+        b = random.uniform(0, 0.2)
+        randRGB.append((r, g, b))
+    
+    print(max(featureOffset))
 
     textures = glGenTextures(3)
 
@@ -63,6 +73,17 @@ def init():
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, image[0])
+
+    maskTextures = glGenTextures(817)
+    for num in range(817):
+        glBindTexture(GL_TEXTURE_2D, maskTextures[num])
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1)
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, len(masks[num][0]), len(masks[num]), 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, masks[num])
+
 
 
 def playVideo():
@@ -125,7 +146,7 @@ def drawImages():
     glTexCoord2f(1.0, 0.0)
     glVertex3f(sw/2, 0.0, 0.0)
     glEnd()
-    #glPopMatrix()
+    glPopMatrix()
     glDisable(GL_TEXTURE_2D) 
     glColor3ub(255, 255, 255)
     glRasterPos(20, 20)
@@ -136,15 +157,31 @@ def drawImages():
     
 
 
-def drawOverlay():
-    glColor3ub(255,255,255)
-    glBegin(GL_LINE_LOOP)
-    glVertex2f(features[currImage][0] - 20, features[currImage][1] - 20)
-    glVertex2f(features[currImage][0] + 20, features[currImage][1] - 20)
-    glVertex2f(features[currImage][0] + 20, features[currImage][1] + 20)
-    glVertex2f(features[currImage][0] - 20, features[currImage][1] + 20)
+def drawOverlay(feature):
+    glBindTexture(GL_TEXTURE_2D, maskTextures[feature])
+    glEnable(GL_TEXTURE_2D)
+    glPushMatrix()
+    glTranslatef(featureOffset[feature][0], featureOffset[feature][1], 0)
+    glClear(GL_DEPTH_BUFFER_BIT)
+    glBegin(GL_QUADS)
+    glTexCoord2f(0.0, 0.0)
+    glVertex3f(0.0, 0.0, 0.0)
+    glTexCoord2f(0.0, 1.0)
+    glVertex3f(0.0, len(masks[feature])*(sw/(2*width)), 0.0)
+    glTexCoord2f(1.0, 1.0)
+    glVertex3f(len(masks[feature][0])*(sw/(2*width)), len(masks[feature])*(sw/(2*width)), 0.0)
+    glTexCoord2f(1.0, 0.0)
+    glVertex3f(len(masks[feature][0])*(sw/(2*width)), 0.0, 0.0)
     glEnd()
     glPopMatrix()
+    glDisable(GL_TEXTURE_2D)
+#     glColor3ub(255,255,255)
+#     glBegin(GL_LINE_LOOP)
+#     glVertex2f(featureOffset[features][0], featureOffset[features][1])
+#     glVertex2f(featureOffset[features][0] + featureSize[features][0], featureOffset[features][1])
+#     glVertex2f(featureOffset[features][0] + featureSize[features][0], featureOffset[features][1] + featureSize[features][1])
+#     glVertex2f(featureOffset[features][0], featureOffset[features][1] + featureSize[features][1])
+#     glEnd()
 
 
 def featureZoom():
@@ -247,7 +284,7 @@ def featureDetails():
         glutBitmapCharacter( GLUT_BITMAP_HELVETICA_18 , ord(ch))
 
     glRasterPos2f(20, (sw/5)/3)
-    s1 = 'Location: ' + str(features[fData1][0]) + ', ' + str(features[fData1][1])
+    s1 = 'Location: ' + str(featureOffset[fData1][0]) + ', ' + str(featureOffset[fData1][1])
     for ch in s1:
         glutBitmapCharacter( GLUT_BITMAP_HELVETICA_18 , ord(ch))
     
@@ -279,7 +316,7 @@ def featureDetails():
         glutBitmapCharacter( GLUT_BITMAP_HELVETICA_18 , ord(ch))
 
     glRasterPos2f(20, (sw/5)/3)
-    s1 = 'Location: ' + str(features[fData2][0]) + ', ' + str(features[fData2][1])
+    s1 = 'Location: ' + str(featureOffset[fData2][0]) + ', ' + str(featureOffset[fData2][1])
     for ch in s1:
         glutBitmapCharacter( GLUT_BITMAP_HELVETICA_18 , ord(ch))
     
@@ -318,8 +355,14 @@ def plotTraces():
 
 def display():
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+    glEnable(GL_BLEND)
+    glBlendFunc(GL_ONE, GL_ZERO)
     drawImages()
-    drawOverlay()
+    glBlendFunc(GL_CONSTANT_COLOR, GL_ONE)
+    for feature in range(len(masks)):
+        glBlendColor(randRGB[feature][0], randRGB[feature][1], randRGB[feature][2], 1)
+        drawOverlay(feature)
+    glDisable(GL_BLEND)
     featureZoom()
     featureDetails()
     plotTraces()
@@ -335,7 +378,7 @@ def Timer(value):
 def mouseAction(button, state, x, y):
     global fData1, fData2
     if state == GLUT_DOWN and button == GLUT_LEFT_BUTTON:
-        if x < int((sw/2)+features[currImage][0]+20) and x > int((sw/2)+features[currImage][0]-20) and y < int(features[currImage][1]+20) and y > int(features[currImage][1]-20):
+        if x < int((sw/2)+featureOffset[currImage][0]+featureSize[currImage][0]) and x > int((sw/2)+featureOffset[currImage][0]) and y < int(featureOffset[currImage][1]+featureSize[currImage][1]) and y > int(featureOffset[currImage][1]):
             if zoom1 == 1:
                 glBindTexture(GL_TEXTURE_2D, textures[1])
                 glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_BGRA, GL_UNSIGNED_BYTE, image[currImage])
