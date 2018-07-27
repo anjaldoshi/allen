@@ -4,10 +4,14 @@ from OpenGL.GLU import *
 import sys, numpy, json, h5py, random
 from PIL import Image
 
-totalImages = 384
-sw = sh = width = height = textures = maskTextures =  currImage = iNext = iPrev = zoom1 = zoom2 = fData1 = fData2 = fwd = rvs = MouseX = MouseY = hover = 0
+totalImages = 999
+sw = sh = width = height = textures = maskTextures =  currImage = iNext = iPrev = zoom1 = zoom2 = fData1 = fData2 = fwd = rvs = MouseX = MouseY = hover = frame_count = start_time = end_time = fps = 0
+traceStart = 1
+traceEnd = 1000
 zoomFactor = 1.0
 image = []
+featureImage = []
+bufferImage = []
 featureOffset = []
 featureSize = []
 traces = []
@@ -15,7 +19,7 @@ masks = []
 randRGB = []
 
 def init():
-    global width, height, textures, maskTextures, traces, featureOffset, featureSize, masks, randRGB
+    global image, bufferImage, width, height, textures, maskTextures, traces, featureOffset, featureSize, masks, randRGB
     glClearColor(0.0,0.0,0.0,0.0)
 
     hf  = h5py.File('mask.h5', 'r')
@@ -29,14 +33,26 @@ def init():
     masks = masks[:,:,:]
     masks = masks.transpose(0, 2, 1)
 
-    with open('roi_taces.txt', 'r') as fh:
-        traces = json.load(fh)
+    hf2 = h5py.File('roi_traces.h5', 'r')
+    traces = hf2.get('data')
+    traces = traces[1,:]
 
-    for data in range(totalImages+1):
-        im = Image.open('dataset3/' + str(data) + '.png')
-        image.append(im.tobytes("raw", "RGBA", 0, -1))
-        width = im.size[0]
-        height = im.size[1]
+    hf3 = h5py.File('motion_corrected_video.h5', 'r')
+    bufferImage = hf3.get('data')
+    image = bufferImage[0,:,:]
+    image = image.transpose(1,0)
+    width = len(image[0])
+    height = len(image)
+
+    hf.close()
+    hf2.close()
+
+    # for data in range(400):
+    #     im = Image.open('dataset3/' + str(data) + '.png')
+    #     im = im.transpose(Image.FLIP_TOP_BOTTOM)
+    #     image.append(im.tobytes("raw", "RGBA", 0, -1))
+    #     width = im.size[0]
+    #     height = im.size[1]
         #featureOffset.append((numpy.random.randint(low=50, high=900), (numpy.random.randint(low=50, high=800))))
     for data in range(len(masks)):    
         featureOffset.append((offX[data]*(sw/(2*width)), offY[data]*(sw/(2*width))))
@@ -46,8 +62,6 @@ def init():
         b = random.uniform(0, 0.2)
         randRGB.append((r, g, b))
     
-    print(max(featureOffset))
-
     textures = glGenTextures(3)
 
     glBindTexture(GL_TEXTURE_2D, textures[0])
@@ -56,7 +70,7 @@ def init():
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, image[0])
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, width, height, 0, GL_LUMINANCE, GL_SHORT, image)
 
     glBindTexture(GL_TEXTURE_2D, textures[1])
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1)
@@ -64,7 +78,7 @@ def init():
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, image[0])
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, width, height, 0, GL_LUMINANCE, GL_SHORT, image)
 
     glBindTexture(GL_TEXTURE_2D, textures[2])
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1)
@@ -72,7 +86,11 @@ def init():
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, image[0])
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, width, height, 0, GL_LUMINANCE, GL_SHORT, image)
+
+    # glGenBuffers(1, pbo)
+    # glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo)
+    # glBufferData(GL_PIXEL_UNPACK_BUFFER, width*height*4, 0, GL_STREAM_DRAW)
 
     maskTextures = glGenTextures(817)
     for num in range(817):
@@ -87,9 +105,9 @@ def init():
 
 
 def playVideo():
-    global currImage
+    global currImage, image
     if fwd == 1:
-        if currImage < totalImages:
+        if currImage < len(bufferImage)-1:
             currImage += 1
         else:
             currImage = 0
@@ -97,16 +115,18 @@ def playVideo():
         if currImage > 0:
             currImage -= 1
         else:
-            currImage = totalImages
-        
+            currImage = len(bufferImage)-1
+
+    image = bufferImage[currImage,:,:]
+    image = image.transpose(1,0)    
     glBindTexture(GL_TEXTURE_2D, textures[0])
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_BGRA, GL_UNSIGNED_BYTE, image[currImage])
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_LUMINANCE, GL_SHORT, image)
 
 
 def updateImage():
-    global iNext, iPrev, currImage
+    global iNext, iPrev, currImage, image
     if iNext == 1:
-        if currImage < totalImages:
+        if currImage < len(bufferImage)-1:
             currImage +=1
         else:
             currImage = 0
@@ -114,15 +134,18 @@ def updateImage():
         if currImage > 0:
             currImage -=1
         else:
-            currImage = totalImages
+            currImage = len(bufferImage)-1
     else:
         return
 
     iNext = iPrev = 0
 
+    image = bufferImage[currImage,:,:]
+    image = image.transpose(1,0)
     glBindTexture(GL_TEXTURE_2D, textures[0])
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_BGRA, GL_UNSIGNED_BYTE, image[currImage])
-    glActiveTexture(GL_TEXTURE0)
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_LUMINANCE, GL_SHORT, image)
+    #glActiveTexture(GL_TEXTURE0)
+
 
 
 def drawImages():
@@ -332,6 +355,7 @@ def featureDetails():
 
 
 def plotTraces():
+    global traceStart, traceEnd
     glColor3ub(255, 255, 255)
     glViewport(0, 100, sw, 100)
     glMatrixMode(GL_PROJECTION)
@@ -346,14 +370,47 @@ def plotTraces():
     glVertex2f(sw, 100-0.1)
     glEnd()
     glBegin(GL_LINES)
-    for point in range(1,385):
-        glVertex2f((point-1)*5, (traces[point-1])/50-50)
-        glVertex2f(point*5, (traces[point])/50-50)
+    glVertex2f(sw/2, 0)
+    glVertex2f(sw/2, 100)
+    glEnd()
+    if currImage < len(bufferImage)-400 and currImage >= 400:
+        traceStart = currImage - 400
+        traceEnd = currImage + 400
+    else:
+        if currImage < 400:
+            traceStart = 1
+            traceEnd = 800
+        elif currImage > len(bufferImage)-400:
+            traceStart = currImage - 400
+            traceEnd = len(bufferImage)-1
+    glBegin(GL_LINES)
+    # if currImage > traceEnd - 400 and currImage < len(bufferImage)-400:
+    #     traceEnd += 400
+    #     traceStart += 400
+    # if currImage < traceStart + 400 and currImage > 400:
+    #     traceStart -= 400
+    #     traceEnd -= 400
+    for point in range(traceStart, traceEnd):
+        glVertex2f((sw/2-currImage*5)+(point-1)*5, (traces[point-1])/50-60)
+        glVertex2f((sw/2-currImage*5)+point*5, (traces[point])/50-60)
     glEnd()
 
 
+def drawFPS():
+    glViewport(0, sh-40, 30, 30)
+    glMatrixMode(GL_PROJECTION)
+    glLoadIdentity()
+    gluOrtho2D(0, 30, 30, 0)
+    glMatrixMode(GL_MODELVIEW)
+    glLoadIdentity()
+    glColor3ub(255, 255, 255)
+    glRasterPos2f(10,10)
+    for ch in str(fps):
+        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(ch))
+
 
 def display():
+    global image, frame_count, end_time, start_time, fps
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
     glEnable(GL_BLEND)
     glBlendFunc(GL_ONE, GL_ZERO)
@@ -367,40 +424,53 @@ def display():
     featureDetails()
     plotTraces()
     playVideo()
+    frame_count += 1
+    end_time = glutGet(GLUT_ELAPSED_TIME)
+    if end_time - start_time > 100:
+        fps =  int(frame_count*1000/(end_time-start_time))
+        frame_count = 0
+        start_time = end_time
+    drawFPS()
     glutSwapBuffers()
 
 
 def Timer(value):
     glutPostRedisplay()
-    glutTimerFunc(30, Timer, 0)
+    glutTimerFunc(1, Timer, 0)
 
 
 def mouseAction(button, state, x, y):
     global fData1, fData2
     if state == GLUT_DOWN and button == GLUT_LEFT_BUTTON:
-        if x < int((sw/2)+featureOffset[currImage][0]+featureSize[currImage][0]) and x > int((sw/2)+featureOffset[currImage][0]) and y < int(featureOffset[currImage][1]+featureSize[currImage][1]) and y > int(featureOffset[currImage][1]):
-            if zoom1 == 1:
-                glBindTexture(GL_TEXTURE_2D, textures[1])
-                glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_BGRA, GL_UNSIGNED_BYTE, image[currImage])
-                fData1 = currImage
-            elif zoom2 == 1:
-                glBindTexture(GL_TEXTURE_2D, textures[2])
-                glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_BGRA, GL_UNSIGNED_BYTE, image[currImage])
-                fData2 = currImage
+        # if x < int((sw/2)+featureOffset[currImage][0]+featureSize[currImage][0]) and x > int((sw/2)+featureOffset[currImage][0]) and y < int(featureOffset[currImage][1]+featureSize[currImage][1]) and y > int(featureOffset[currImage][1]):
+        #     if zoom1 == 1:
+        #         glBindTexture(GL_TEXTURE_2D, textures[1])
+        #         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_BGRA, GL_UNSIGNED_BYTE, image[currImage])
+        #         fData1 = currImage
+        #     elif zoom2 == 1:
+        #         glBindTexture(GL_TEXTURE_2D, textures[2])
+        #         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_BGRA, GL_UNSIGNED_BYTE, image[currImage])
+        #         fData2 = currImage
+        if x > int(sw/2) and y < int(sw/2*(height/width)):
+            glBindTexture(GL_TEXTURE_2D, textures[2])
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, len(masks[10][0]), len(masks[10]), GL_LUMINANCE, GL_UNSIGNED_BYTE, masks[10])
+
     glutPostRedisplay()   
 
 
 def zoomLocation(x, y):
-    global zoomFactor, MouseX, MouseY
+    global zoomFactor, MouseX, MouseY, featureImage
     if x > int(sw/2) and x <= sw and y >= 0 and y < int((sw/2)*(height/width)) and hover == 1:
         MouseX = x - sw/2
         MouseY = y
         glBindTexture(GL_TEXTURE_2D, textures[1])
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_BGRA, GL_UNSIGNED_BYTE, image[currImage])
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_LUMINANCE, GL_SHORT, image)
         zoomFactor = 7.5
     else:
+        featureImage = bufferImage[fData1,:,:]
+        featureImage = featureImage.transpose(1,0)
         glBindTexture(GL_TEXTURE_2D, textures[1])
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_BGRA, GL_UNSIGNED_BYTE, image[fData1])
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_LUMINANCE, GL_SHORT, featureImage)
         zoomFactor = 1.0
         MouseX = MouseY = 0
     glutPostRedisplay()       
