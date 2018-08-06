@@ -394,15 +394,15 @@ def plotTraces(num):
     glVertex2f(sw/2, 0)
     glVertex2f(sw/2, 90)
     glEnd()
-    if currImage < len(bufferImage)-400 and currImage >= 400:
-        traceStart = currImage - 400
-        traceEnd = currImage + 400
+    if currImage < len(bufferImage)-500 and currImage >= 500:
+        traceStart = currImage - 500
+        traceEnd = currImage + 500
     else:
-        if currImage < 400:
+        if currImage < 500:
             traceStart = 1
-            traceEnd = 800
-        elif currImage > len(bufferImage)-400:
-            traceStart = currImage - 400
+            traceEnd = 1000
+        elif currImage > len(bufferImage)-500:
+            traceStart = currImage - 500
             traceEnd = len(bufferImage)
     #glScalef(1.0, -1.0, 1.0)
     glBegin(GL_LINES)
@@ -413,8 +413,8 @@ def plotTraces(num):
     #     traceStart -= 400
     #     traceEnd -= 400
     for point in range(traceStart, traceEnd):
-        glVertex2f((sw/2-currImage*5)+(point-1)*5, traces[maskSelected[num]][point-1]/250)
-        glVertex2f((sw/2-currImage*5)+point*5, traces[maskSelected[num]][point]/250)
+        glVertex2f((sw/2-currImage*2)+(point-1)*2, traces[maskSelected[num]][point-1]/250-15)
+        glVertex2f((sw/2-currImage*2)+point*2, traces[maskSelected[num]][point]/250-15)
     glEnd()
 
 
@@ -504,7 +504,7 @@ def zoomLocation(x, y):
 
 
 def changeImage(bkey, x, y):
-    global iNext, iPrev, zoom1, zoom2, fwd, rvs, hover
+    global iNext, iPrev, zoom1, zoom2, fwd, rvs, hover, maskZoomCount, maskSelected
     key = bkey.decode("utf-8")
     if key == chr(27):
         sys.exit()
@@ -522,6 +522,9 @@ def changeImage(bkey, x, y):
         zoom2 = 1
     elif key == ' ':
         fwd = rvs = 0
+    elif key == 'c':
+        maskZoomCount = 0
+        maskSelected = [0,0,0]
     elif key == 'z':
         if hover == 0:
             hover = 1
@@ -546,7 +549,7 @@ if __name__ == '__main__':
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGBA | GLUT_DEPTH)
     sw = glutGet(GLUT_SCREEN_WIDTH)
     sh = glutGet(GLUT_SCREEN_HEIGHT)
-    sw = 1920
+    #sw = 1920
     glutInitWindowSize(sw, sh)
     glutCreateWindow("2P Image Analysis")
     glutFullScreen()
