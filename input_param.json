@@ -1,0 +1,20 @@
+{
+    "video": {
+        "uri":"/home/anjald/project/motion_corrected_video.h5",
+        "hdf5": {
+            "dataset": ["data"]
+        }
+    },
+    "segmentation": {
+        "uri":"/home/anjald/project/mask.h5",
+        "hdf5": {
+            "dataset": ["mask", "offset", "size"]
+        }
+    },
+    "traces": {
+        "uri":"/home/anjald/project/roi_traces.h5",
+        "hdf5": {
+            "dataset": ["data"]
+        }
+    }
+}
